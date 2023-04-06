@@ -1,0 +1,14 @@
+{
+    "aksClusterName": {
+        "type": "String",
+        "value": "CLUSTER_NAME"
+    },
+    "resourceGroupName": {
+        "type": "String",
+        "value": "RESOURCE_GROUP_NAME"
+    },
+    "subscriptionId": {
+        "type": "String",
+        "value": "SUBSCRIPTION_ID"
+    }
+}

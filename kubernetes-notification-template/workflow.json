@@ -1,0 +1,207 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "actions": {
+            "Call_API_for_Available_Upgrades": {
+                "inputs": {
+                    "authentication": {
+                        "audience": "",
+                        "type": "ManagedServiceIdentity"
+                    },
+                    "method": "GET",
+                    "uri": "https://management.azure.com/subscriptions/@{parameters('subscriptionId')}/resourceGroups/@{parameters('resourceGroupName')}/providers/Microsoft.ContainerService/managedClusters/@{parameters('aksClusterName')}/upgradeProfiles/default?api-version=2023-01-01"
+                },
+                "runAfter": {},
+                "trackedProperties": {},
+                "type": "Http"
+            },
+            "For_each_Available_Upgrade_Version": {
+                "actions": {
+                    "If_Newer_Version_Exists": {
+                        "actions": {
+                            "SetVar_-_Set_upgrade_to_New_Upgrade": {
+                                "inputs": {
+                                    "name": "newUpgradeVersion",
+                                    "value": "@body('Parse_Upgrade_Item')?['kubernetesVersion']"
+                                },
+                                "runAfter": {},
+                                "type": "SetVariable"
+                            }
+                        },
+                        "expression": {
+                            "and": [
+                                {
+                                    "less": [
+                                        "@variables('newUpgradeVersion')",
+                                        "@body('Parse_Upgrade_Item')?['kubernetesVersion']"
+                                    ]
+                                },
+                                {
+                                    "not": {
+                                        "equals": [
+                                            "@body('Parse_Upgrade_Item')?['isPreview']",
+                                            "@true"
+                                        ]
+                                    }
+                                }
+                            ]
+                        },
+                        "runAfter": {
+                            "Parse_Upgrade_Item": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "If"
+                    },
+                    "Parse_Upgrade_Item": {
+                        "inputs": {
+                            "content": "@items('For_each_Available_Upgrade_Version')",
+                            "schema": {
+                                "properties": {
+                                    "isPreview": {
+                                        "type": "boolean"
+                                    },
+                                    "kubernetesVersion": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        },
+                        "runAfter": {},
+                        "type": "ParseJson"
+                    }
+                },
+                "foreach": "@variables('controlPlaneUpgrades')",
+                "runAfter": {
+                    "SetVar_-_Set_Current_Version": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Foreach"
+            },
+            "Initialize_variable": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "emailBody",
+                            "type": "string",
+                            "value": "{\n  \"isUpgradeAvailable\": @{if(equals(body('Parse_API_Result')?['kubernetesVersion'],variables('newUpgradeVersion')),false,true)},\n  \"latestVersion\": @{variables('newUpgradeVersion')}\n}"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "For_each_Available_Upgrade_Version": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "Parse_API_Result": {
+                "inputs": {
+                    "content": "@variables('controlPlaneProfile')",
+                    "schema": {
+                        "properties": {
+                            "kubernetesVersion": {
+                                "type": "string"
+                            },
+                            "osType": {
+                                "type": "string"
+                            },
+                            "upgrades": {
+                                "items": {
+                                    "properties": {
+                                        "kubernetesVersion": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "required": [
+                                        "kubernetesVersion"
+                                    ],
+                                    "type": "object"
+                                },
+                                "type": "array"
+                            }
+                        },
+                        "type": "object"
+                    }
+                },
+                "runAfter": {
+                    "SetVar_-_Get_Controle_Place_Upgrade_Profile": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ParseJson"
+            },
+            "SetVar_-_Get_Available_Control_Plane_Upgrades": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "controlPlaneUpgrades",
+                            "type": "array",
+                            "value": "@body('Parse_API_Result')?['upgrades']"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Parse_API_Result": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "SetVar_-_Get_Controle_Place_Upgrade_Profile": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "controlPlaneProfile",
+                            "type": "object",
+                            "value": "@body('Call_API_for_Available_Upgrades')?['properties']?['controlPlaneProfile']"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Call_API_for_Available_Upgrades": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "SetVar_-_Set_Current_Version": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "newUpgradeVersion",
+                            "type": "string",
+                            "value": "@body('Parse_API_Result')?['kubernetesVersion']"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "SetVar_-_Get_Available_Control_Plane_Upgrades": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            }
+        },
+        "contentVersion": "1.0.0.0",
+        "outputs": {},
+        "triggers": {
+            "Recurrence_-_Every_Day": {
+                "recurrence": {
+                    "frequency": "Day",
+                    "interval": 1,
+                    "schedule": {
+                        "hours": [
+                            "1"
+                        ]
+                    },
+                    "timeZone": "Eastern Standard Time"
+                },
+                "type": "Recurrence"
+            }
+        }
+    },
+    "kind": "Stateful"
+}
